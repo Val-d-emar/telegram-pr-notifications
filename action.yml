@@ -1,31 +1,32 @@
-name: 'Telegram PR Notifications'
-description: 'Flexible Telegram notifications for GitHub Pull Request events'
-author: 'Val-d-emar'
+name: "Telegram PR Notifications"
+description: "Flexible Telegram notifications for GitHub Pull Request events"
+author: "Val-d-emar"
 branding:
-  icon: 'message-circle'
-  color: 'blue'
+  icon: "message-circle"
+  color: "blue"
 
 inputs:
   bot_token:
-    description: 'Telegram Bot Token'
+    description: "Telegram Bot Token"
     required: true
   chat_id:
-    description: 'Telegram Chat ID'
+    description: "Telegram Chat ID"
     required: true
   message_thread_id:
-    description: 'Telegram Thread ID (if using supergroups with topics)'
+    description: "Telegram Thread ID (if using supergroups with topics)"
     required: false
   user_map:
-    description: 'Mapping of GitHub usernames to Telegram usernames (gh_nickname=tg_nickname)'
+    description: "Mapping of GitHub usernames to Telegram usernames
+      (gh_nickname=tg_nickname)"
     required: false
   ignore_bots:
-    description: 'Do not send notifications if the actor is a bot'
+    description: "Do not send notifications if the actor is a bot"
     required: false
-    default: 'true'
+    default: "true"
   language:
-    description: 'Language of the notification (ru / en)'
+    description: "Language of the notification (ru / en)"
     required: false
-    default: 'ru'
+    default: "ru"
 
 runs:
   using: "composite"
@@ -39,28 +40,30 @@ runs:
         USER_MAP: ${{ inputs.user_map }}
         IGNORE_BOTS: ${{ inputs.ignore_bots }}
         LANG_SET: ${{ inputs.language }}
-        
+
         EVENT_NAME: ${{ github.event_name }}
         ACTION: ${{ github.event.action }}
         ACTOR: ${{ github.actor }}
-        
+
         PR_NUM: ${{ github.event.pull_request.number }}
         PR_TITLE: ${{ github.event.pull_request.title }}
         PR_URL: ${{ github.event.pull_request.html_url }}
         PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-        
+
         IS_DRAFT: ${{ github.event.pull_request.draft }}
         IS_MERGED: ${{ github.event.pull_request.merged }}
         REQ_REVIEWER: ${{ github.event.requested_reviewer.login }}
         REVIEW_STATE: ${{ github.event.review.state }}
-        
+
+        ASSIGNEE: ${{ github.event.assignee.login }}
+
       run: |
         # 1. Проверка на бота
         if [[ "$IGNORE_BOTS" == "true" && "$ACTOR" == *"[bot]"* ]]; then
             echo "Actor is a bot. Skipping."
             exit 0
         fi
-        
+
         # Если это не PR и не ревью, выходим
         if [[ -z "$PR_NUM" ]]; then
             echo "Not a pull request context. Skipping."
@@ -82,7 +85,10 @@ runs:
             T_DESC_NEW="The author is waiting for your review."; T_DESC_READY="Draft converted to ready state."
             T_DESC_MERGED="Code has been merged into the base branch."; T_DESC_CLOSED="PR was closed without merging."
             T_DESC_APPROVED="Ready to merge! 🚀"; T_DESC_CHANGES="Please check the reviewer's comments."
+
             T_DESC_COMMENT="Review comments have been left."
+            T_ASSIGNED="📌 <b>Assigned to PR</b>"
+            T_ASSIGNEE="🛠 Assignee"
         else
             T_NEW_PR="🚀 <b>Новый Pull Request</b>"
             T_READY="🏁 <b>PR Готов к ревью</b>"
@@ -98,6 +104,9 @@ runs:
             T_DESC_MERGED="Код отправлен в основную ветку."; T_DESC_CLOSED="PR был закрыт без слияния."
             T_DESC_APPROVED="Можно мержить! 🚀"; T_DESC_CHANGES="Посмотри комментарии ревьюера."
             T_DESC_COMMENT="В ревью оставили замечания."
+
+            T_ASSIGNED="📌 <b>Назначен исполнитель</b>"
+            T_ASSIGNEE="🛠 Исполнитель"
         fi
 
         # 3. Улучшенная функция для поиска ника (добавляет @ если его нет)
@@ -118,7 +127,7 @@ runs:
         STATUS=""
         MIDDLE=""
         DESC=""
-        ACTOR_TG=$(get_tg_nick "$ACTOR")
+        # ACTOR_TG=$(get_tg_nick "$ACTOR")
 
         # 4. Логика определения событий
         if [[ "$EVENT_NAME" == "pull_request" ]]; then
@@ -127,12 +136,12 @@ runs:
                 if [[ "$IS_DRAFT" == "true" ]]; then exit 0; fi # Драфты не шлем
                 STATUS="$T_NEW_PR"
                 DESC="$T_DESC_NEW"
-                MIDDLE="$T_FROM: <code>$ACTOR</code> ($ACTOR_TG)"
+                MIDDLE="$T_FROM: <code>$ACTOR</code>"
                 
             elif [[ "$ACTION" == "ready_for_review" ]]; then
                 STATUS="$T_READY"
                 DESC="$T_DESC_READY"
-                MIDDLE="$T_FROM: <code>$ACTOR</code> ($ACTOR_TG)"
+                MIDDLE="$T_FROM: <code>$ACTOR</code>"
                 
             elif [[ "$ACTION" == "closed" ]]; then
                 if [[ "$IS_MERGED" == "true" ]]; then
@@ -142,18 +151,24 @@ runs:
                     STATUS="$T_CLOSED"
                     DESC="$T_DESC_CLOSED"
                 fi
-                MIDDLE="$T_FROM: <code>$ACTOR</code> ($ACTOR_TG)"
+                MIDDLE="$T_FROM: <code>$ACTOR</code>"
                 
             elif [[ "$ACTION" == "review_requested" ]]; then
                 if [[ -z "$REQ_REVIEWER" ]]; then exit 0; fi
                 REV_TG=$(get_tg_nick "$REQ_REVIEWER")
                 STATUS="$T_REV_REQ"
-                MIDDLE="$T_FROM: <code>$ACTOR</code> ($ACTOR_TG)\n$T_REV: <b>$REV_TG</b>"
+                MIDDLE="$T_FROM: <code>$ACTOR</code>\n$T_REV: <b>$REV_TG</b>"
+
+            elif [[ "$ACTION" == "assigned" ]]; then
+                if [[ -z "$ASSIGNEE" ]]; then exit 0; fi
+                ASSIGNEE_TG=$(get_tg_nick "$ASSIGNEE")
+                STATUS="$T_ASSIGNED"
+                MIDDLE="$T_FROM: <code>$ACTOR</code>\n$T_ASSIGNEE: <b>$ASSIGNEE_TG</b>"                
             fi
 
         elif [[ "$EVENT_NAME" == "pull_request_review" && "$ACTION" == "submitted" ]]; then
             AUTHOR_TG=$(get_tg_nick "$PR_AUTHOR")
-            MIDDLE="$T_FROM: <code>$ACTOR</code> ($ACTOR_TG)\n$T_TO: $AUTHOR_TG"
+            MIDDLE="$T_FROM: <code>$ACTOR</code>\n$T_TO: $AUTHOR_TG"
 
             if [[ "$REVIEW_STATE" == "approved" ]]; then
                 STATUS="$T_APPROVED"
@@ -173,8 +188,10 @@ runs:
             exit 0
         fi
 
+        if [[ -n "$DESC" ]]; then DESC="$DESC\n\n"; fi
+
         # 5. Сборка сообщения (сохраняем переносы строк с echo -e)
-        MESSAGE=$(echo -e "$STATUS\n$MIDDLE\n\n$DESC\n\n📝 <a href=\"$PR_URL\">PR #$PR_NUM: $PR_TITLE</a>")
+        MESSAGE=$(echo -e "$STATUS\n$MIDDLE\n\n$DESC📝 <a href=\"$PR_URL\">PR #$PR_NUM: $PR_TITLE</a>")
 
         # 6. Отправка c URL-encoding (спасает от кавычек и спецсимволов)
         CURL_ARGS=(
@@ -191,10 +208,10 @@ runs:
         fi
 
         HTTP_RESPONSE=$(curl -w "%{http_code}" -o /dev/null "${CURL_ARGS[@]}")
-        
+
         if [[ "$HTTP_RESPONSE" != "200" ]]; then
             echo "Error sending Telegram message! HTTP code: $HTTP_RESPONSE"
             exit 1
         fi
-        
+
         echo "Notification successfully sent."

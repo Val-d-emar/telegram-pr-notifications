@@ -1,0 +1,25 @@
+name: Telegram PR Notifier
+
+on:
+  pull_request:
+    types: [opened, ready_for_review, closed, review_requested, assigned]
+  pull_request_review:
+    types: [submitted]
+
+# Защита от спама и "гонок" при дублирующихся событиях
+concurrency:
+  group: notify-${{ github.event.pull_request.number }}-${{ github.event.action }}-${{ github.event.requested_reviewer.login || github.event.review.id || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Notification
+        uses: Val-d-emar/telegram-pr-notifications@dev
+        with:
+          bot_token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          chat_id: ${{ secrets.TELEGRAM_CHAT_ID }}
+          user_map: ${{ secrets.TELEGRAM_USER_MAP }}
+          ignore_bots: "false"
+          language: "ru"
