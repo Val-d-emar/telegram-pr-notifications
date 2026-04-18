@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Send Notification
-        uses: Val-d-emar/telegram-pr-notifications@main
+        uses: Val-d-emar/telegram-pr-notifications@dev
         with:
           bot_token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           chat_id: ${{ secrets.TELEGRAM_CHAT_ID }}
