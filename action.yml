@@ -1,0 +1,200 @@
+name: 'Telegram PR Notifications'
+description: 'Flexible Telegram notifications for GitHub Pull Request events'
+author: 'Val-d-emar'
+branding:
+  icon: 'message-circle'
+  color: 'blue'
+
+inputs:
+  bot_token:
+    description: 'Telegram Bot Token'
+    required: true
+  chat_id:
+    description: 'Telegram Chat ID'
+    required: true
+  message_thread_id:
+    description: 'Telegram Thread ID (if using supergroups with topics)'
+    required: false
+  user_map:
+    description: 'Mapping of GitHub usernames to Telegram usernames (gh_nickname=tg_nickname)'
+    required: false
+  ignore_bots:
+    description: 'Do not send notifications if the actor is a bot'
+    required: false
+    default: 'true'
+  language:
+    description: 'Language of the notification (ru / en)'
+    required: false
+    default: 'ru'
+
+runs:
+  using: "composite"
+  steps:
+    - name: Run Bash Notification Logic
+      shell: bash
+      env:
+        TOKEN: ${{ inputs.bot_token }}
+        CHAT_ID: ${{ inputs.chat_id }}
+        THREAD_ID: ${{ inputs.message_thread_id }}
+        USER_MAP: ${{ inputs.user_map }}
+        IGNORE_BOTS: ${{ inputs.ignore_bots }}
+        LANG_SET: ${{ inputs.language }}
+        
+        EVENT_NAME: ${{ github.event_name }}
+        ACTION: ${{ github.event.action }}
+        ACTOR: ${{ github.actor }}
+        
+        PR_NUM: ${{ github.event.pull_request.number }}
+        PR_TITLE: ${{ github.event.pull_request.title }}
+        PR_URL: ${{ github.event.pull_request.html_url }}
+        PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        
+        IS_DRAFT: ${{ github.event.pull_request.draft }}
+        IS_MERGED: ${{ github.event.pull_request.merged }}
+        REQ_REVIEWER: ${{ github.event.requested_reviewer.login }}
+        REVIEW_STATE: ${{ github.event.review.state }}
+        
+      run: |
+        # 1. Проверка на бота
+        if [[ "$IGNORE_BOTS" == "true" && "$ACTOR" == *"[bot]"* ]]; then
+            echo "Actor is a bot. Skipping."
+            exit 0
+        fi
+        
+        # Если это не PR и не ревью, выходим
+        if [[ -z "$PR_NUM" ]]; then
+            echo "Not a pull request context. Skipping."
+            exit 0
+        fi
+
+        # 2. Локализация (словарик)
+        if [[ "$LANG_SET" == "en" ]]; then
+            T_NEW_PR="🚀 <b>New Pull Request</b>"
+            T_READY="🏁 <b>PR Ready for Review</b>"
+            T_MERGED="🎉 <b>PR MERGED!</b>"
+            T_CLOSED="🗑 <b>PR Closed</b>"
+            T_REV_REQ="👀 <b>Review Requested</b>"
+            T_APPROVED="✅ <b>PR APPROVED</b>"
+            T_CHANGES="❌ <b>CHANGES REQUESTED</b>"
+            T_COMMENT="💬 <b>New Comment</b>"
+            
+            T_FROM="👤 From"; T_TO="🔔 To"; T_REV="👉 Reviewer"
+            T_DESC_NEW="The author is waiting for your review."; T_DESC_READY="Draft converted to ready state."
+            T_DESC_MERGED="Code has been merged into the base branch."; T_DESC_CLOSED="PR was closed without merging."
+            T_DESC_APPROVED="Ready to merge! 🚀"; T_DESC_CHANGES="Please check the reviewer's comments."
+            T_DESC_COMMENT="Review comments have been left."
+        else
+            T_NEW_PR="🚀 <b>Новый Pull Request</b>"
+            T_READY="🏁 <b>PR Готов к ревью</b>"
+            T_MERGED="🎉 <b>PR СМЕРЖЕН!</b>"
+            T_CLOSED="🗑 <b>PR Закрыт</b>"
+            T_REV_REQ="👀 <b>Запрос ревью</b>"
+            T_APPROVED="✅ <b>PR ОДОБРЕН</b>"
+            T_CHANGES="❌ <b>НУЖНЫ ПРАВКИ</b>"
+            T_COMMENT="💬 <b>Новый комментарий</b>"
+            
+            T_FROM="👤 От"; T_TO="🔔 Для"; T_REV="👉 Ревьюер"
+            T_DESC_NEW="Автор ждёт ваших проверок."; T_DESC_READY="Драфт переведен в готовый статус."
+            T_DESC_MERGED="Код отправлен в основную ветку."; T_DESC_CLOSED="PR был закрыт без слияния."
+            T_DESC_APPROVED="Можно мержить! 🚀"; T_DESC_CHANGES="Посмотри комментарии ревьюера."
+            T_DESC_COMMENT="В ревью оставили замечания."
+        fi
+
+        # 3. Улучшенная функция для поиска ника (добавляет @ если его нет)
+        get_tg_nick() {
+            local gh_name=$(echo "$1" | tr '[:upper:]' '[:lower:]' | xargs)
+            if [ -z "$USER_MAP" ]; then echo "@$1"; return; fi
+            
+            local found=$(echo "$USER_MAP" | grep -i "^${gh_name}=" | cut -d'=' -f2 | xargs)
+            if [ -n "$found" ]; then
+                # Если в маппинге написали без '@', добавляем
+                [[ "$found" != @* ]] && found="@$found"
+                echo "$found"
+            else
+                echo "@$1"
+            fi
+        }
+
+        STATUS=""
+        MIDDLE=""
+        DESC=""
+        ACTOR_TG=$(get_tg_nick "$ACTOR")
+
+        # 4. Логика определения событий
+        if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            
+            if [[ "$ACTION" == "opened" || "$ACTION" == "reopened" ]]; then
+                if [[ "$IS_DRAFT" == "true" ]]; then exit 0; fi # Драфты не шлем
+                STATUS="$T_NEW_PR"
+                DESC="$T_DESC_NEW"
+                MIDDLE="$T_FROM: <code>$ACTOR</code> ($ACTOR_TG)"
+                
+            elif [[ "$ACTION" == "ready_for_review" ]]; then
+                STATUS="$T_READY"
+                DESC="$T_DESC_READY"
+                MIDDLE="$T_FROM: <code>$ACTOR</code> ($ACTOR_TG)"
+                
+            elif [[ "$ACTION" == "closed" ]]; then
+                if [[ "$IS_MERGED" == "true" ]]; then
+                    STATUS="$T_MERGED"
+                    DESC="$T_DESC_MERGED"
+                else
+                    STATUS="$T_CLOSED"
+                    DESC="$T_DESC_CLOSED"
+                fi
+                MIDDLE="$T_FROM: <code>$ACTOR</code> ($ACTOR_TG)"
+                
+            elif [[ "$ACTION" == "review_requested" ]]; then
+                if [[ -z "$REQ_REVIEWER" ]]; then exit 0; fi
+                REV_TG=$(get_tg_nick "$REQ_REVIEWER")
+                STATUS="$T_REV_REQ"
+                MIDDLE="$T_FROM: <code>$ACTOR</code> ($ACTOR_TG)\n$T_REV: <b>$REV_TG</b>"
+            fi
+
+        elif [[ "$EVENT_NAME" == "pull_request_review" && "$ACTION" == "submitted" ]]; then
+            AUTHOR_TG=$(get_tg_nick "$PR_AUTHOR")
+            MIDDLE="$T_FROM: <code>$ACTOR</code> ($ACTOR_TG)\n$T_TO: $AUTHOR_TG"
+
+            if [[ "$REVIEW_STATE" == "approved" ]]; then
+                STATUS="$T_APPROVED"
+                DESC="$T_DESC_APPROVED"
+            elif [[ "$REVIEW_STATE" == "changes_requested" ]]; then
+                STATUS="$T_CHANGES"
+                DESC="$T_DESC_CHANGES"
+            else
+                STATUS="$T_COMMENT"
+                DESC="$T_DESC_COMMENT"
+            fi
+        fi
+
+        # Если статус не задан, значит это событие не обрабатываем
+        if [[ -z "$STATUS" ]]; then
+            echo "Unhandled event/action: $EVENT_NAME / $ACTION"
+            exit 0
+        fi
+
+        # 5. Сборка сообщения (сохраняем переносы строк с echo -e)
+        MESSAGE=$(echo -e "$STATUS\n$MIDDLE\n\n$DESC\n\n📝 <a href=\"$PR_URL\">PR #$PR_NUM: $PR_TITLE</a>")
+
+        # 6. Отправка c URL-encoding (спасает от кавычек и спецсимволов)
+        CURL_ARGS=(
+            -s -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage"
+            -d "chat_id=${CHAT_ID}"
+            -d "parse_mode=HTML"
+            -d "disable_web_page_preview=true"
+            --data-urlencode "text=$MESSAGE"
+        )
+
+        # Если задан Thread ID (Топики / Форумы)
+        if [[ -n "$THREAD_ID" ]]; then
+            CURL_ARGS+=(-d "message_thread_id=${THREAD_ID}")
+        fi
+
+        HTTP_RESPONSE=$(curl -w "%{http_code}" -o /dev/null "${CURL_ARGS[@]}")
+        
+        if [[ "$HTTP_RESPONSE" != "200" ]]; then
+            echo "Error sending Telegram message! HTTP code: $HTTP_RESPONSE"
+            exit 1
+        fi
+        
+        echo "Notification successfully sent."
