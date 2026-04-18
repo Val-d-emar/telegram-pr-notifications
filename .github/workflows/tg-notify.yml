@@ -21,5 +21,5 @@ jobs:
           bot_token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           chat_id: ${{ secrets.TELEGRAM_CHAT_ID }}
           user_map: ${{ secrets.TELEGRAM_USER_MAP }}
-          ignore_bots: "true"
+          ignore_bots: "false"
           language: "ru"
