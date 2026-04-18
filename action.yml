@@ -188,10 +188,12 @@ runs:
             exit 0
         fi
 
-        if [[ -n "$DESC" ]]; then DESC="$T_DESC\n\n"; fi
-
         # 5. Сборка сообщения (сохраняем переносы строк с echo -e)
-        MESSAGE=$(echo -e "$STATUS\n$MIDDLE\n\n$DESC📝 <a href=\"$PR_URL\">PR #$PR_NUM: $PR_TITLE</a>")
+        if [[ -z "$DESC" ]]; then 
+          MESSAGE=$(echo -e "$STATUS\n$MIDDLE\n\n📝 <a href=\"$PR_URL\">PR #$PR_NUM: $PR_TITLE</a>")
+        else
+          MESSAGE=$(echo -e "$STATUS\n$MIDDLE\n\n$DESC\n\n📝 <a href=\"$PR_URL\">PR #$PR_NUM: $PR_TITLE</a>")
+        fi
 
         # 6. Отправка c URL-encoding (спасает от кавычек и спецсимволов)
         CURL_ARGS=(
