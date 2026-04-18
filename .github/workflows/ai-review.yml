@@ -1,0 +1,26 @@
+name: Gemini AI Code Reviewer
+
+on:
+  pull_request:
+    types: [review_requested]
+  pull_request_review:
+    types: [submitted]    
+
+jobs:
+  review-code:
+    if: github.event.requested_reviewer.login == 'ai-agent-net'
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+    - name: Test Gemini Review
+      uses: Val-d-emar/gemini-review@dev
+      with:
+        gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
+        github_token: ${{ secrets.AI_AGENT_PAT }}
+        review_language: "Russian"
+        approval_required: true
+        
