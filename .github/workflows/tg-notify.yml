@@ -2,7 +2,7 @@ name: Telegram PR Notifier
 
 on:
   pull_request:
-    types: [opened, ready_for_review, closed, review_requested]
+    types: [opened, ready_for_review, closed, review_requested, assigned]
   pull_request_review:
     types: [submitted]
 

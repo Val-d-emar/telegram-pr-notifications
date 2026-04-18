@@ -55,6 +55,8 @@ runs:
         REQ_REVIEWER: ${{ github.event.requested_reviewer.login }}
         REVIEW_STATE: ${{ github.event.review.state }}
 
+        ASSIGNEE: ${{ github.event.assignee.login }}
+
       run: |
         # 1. Проверка на бота
         if [[ "$IGNORE_BOTS" == "true" && "$ACTOR" == *"[bot]"* ]]; then
@@ -83,7 +85,10 @@ runs:
             T_DESC_NEW="The author is waiting for your review."; T_DESC_READY="Draft converted to ready state."
             T_DESC_MERGED="Code has been merged into the base branch."; T_DESC_CLOSED="PR was closed without merging."
             T_DESC_APPROVED="Ready to merge! 🚀"; T_DESC_CHANGES="Please check the reviewer's comments."
+
             T_DESC_COMMENT="Review comments have been left."
+            T_ASSIGNED="📌 <b>Assigned to PR</b>"
+            T_ASSIGNEE="🛠 Assignee"
         else
             T_NEW_PR="🚀 <b>Новый Pull Request</b>"
             T_READY="🏁 <b>PR Готов к ревью</b>"
@@ -99,6 +104,9 @@ runs:
             T_DESC_MERGED="Код отправлен в основную ветку."; T_DESC_CLOSED="PR был закрыт без слияния."
             T_DESC_APPROVED="Можно мержить! 🚀"; T_DESC_CHANGES="Посмотри комментарии ревьюера."
             T_DESC_COMMENT="В ревью оставили замечания."
+
+            T_ASSIGNED="📌 <b>Назначен исполнитель</b>"
+            T_ASSIGNEE="🛠 Исполнитель"
         fi
 
         # 3. Улучшенная функция для поиска ника (добавляет @ если его нет)
@@ -150,6 +158,12 @@ runs:
                 REV_TG=$(get_tg_nick "$REQ_REVIEWER")
                 STATUS="$T_REV_REQ"
                 MIDDLE="$T_FROM: <code>$ACTOR</code>\n$T_REV: <b>$REV_TG</b>"
+
+            elif [[ "$ACTION" == "assigned" ]]; then
+                if [[ -z "$ASSIGNEE" ]]; then exit 0; fi
+                ASSIGNEE_TG=$(get_tg_nick "$ASSIGNEE")
+                STATUS="$T_ASSIGNED"
+                MIDDLE="$T_FROM: <code>$ACTOR</code>\n$T_ASSIGNEE: <b>$ASSIGNEE_TG</b>"                
             fi
 
         elif [[ "$EVENT_NAME" == "pull_request_review" && "$ACTION" == "submitted" ]]; then
